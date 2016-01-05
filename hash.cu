@@ -1,7 +1,16 @@
 //#include "hash.cuh"
-#include "hash.cuh"
+//#include "hash.cuh"
 #include <stdio.h>
 #include <string.h>
+
+#define INPUT_FUNC_GPU
+#define TIMER
+
+#ifdef INPUT_FUNC_GPU
+ #include "hash.cuh"
+#else
+ #include "hash.h"
+#endif
 
 #define MS  23
 #define BW  5
@@ -11,17 +20,20 @@
 #define SIZE_A MS*sizeof(uint32_t)
 #define SIZE_B BL*BW*sizeof(uint32_t)
 #define SIZE_IN BW*sizeof(uint32_t)
+#define SIZE_B BL*BW*sizeof(uint32_t)
+#define SIZE_OUT 2*sizeof(uint32_t)
 
 uint32_t a[MS];
 uint32_t b[BL*BW];
 
    
-inline unsigned int index2(unsigned int i, unsigned int j){
+__device__ inline unsigned int index2(unsigned int i, unsigned int j){
     return (unsigned int) (i*BW+j);
 }
 
-__device__ inline unsigned int index1(unsigned int i, unsigned int j){
-    return (unsigned int) (i*BW+j);
+__device__ inline uint32_t ROR2(uint32_t x, int y){
+    int y_mod = ((y & 0x1F) + 32) & 0x1F;
+    return ROR32(x, y_mod);
 }
 
 //note: output must be 32+1 chars (+1 for termination of string)
@@ -34,25 +46,28 @@ void Hash(char* input, char* output)
     
     dim3 threads,grid; //JR
     
-    // utilities //JR
-    //cudaEvent_t start;
-    //cudaEvent_t stop;
-    //float msecTotal;
-    
+#ifdef INPUT_FUNC_GPU
     // Allocate memory for device 
     uint32_t* d_a;
     cudaMalloc((void**) &d_a, SIZE_A);
+    cudaMemset(d_a,0,SIZE_A);
     uint32_t* d_b;
     cudaMalloc((void**) &d_b, SIZE_B);
+    cudaMemset(d_b,0,SIZE_B);
     uint32_t* d_in;
     cudaMalloc((void**) &d_in, SIZE_IN);
-    
-    // create and start timer
-    //cudaEventCreate(&start);
-    //cudaEventRecord(start, NULL);
-    
+#endif
+#ifdef TIMER
+    // utilities //JR
+    cudaEvent_t start;
+    cudaEvent_t stop;
+    float msecTotal;
+    // start timer
+    cudaEventCreate(&start);
+    cudaEventRecord(start, NULL);
+#endif
     // setup execution parameters
-    threads = dim3(BW, 1); // dummy fix this //JR
+    threads = dim3(1, 1); // dummy fix this //JR
     grid = dim3(1,1); // dummy fix this //JR
     
     /*****************************/
@@ -73,19 +88,17 @@ void Hash(char* input, char* output)
                 in[q] |= (uint32_t)((unsigned char)(input[p+q*sizeof(uint32_t)+w])) << (8*w);
         }
         p += sizeof(uint32_t)*BW;
-        
+#ifdef INPUT_FUNC_GPU        
         // copy host memory to device //JR
         cudaMemcpy(d_in, in, SIZE_IN , cudaMemcpyHostToDevice);
         
         // call gpu
         InputFunction<<< grid, threads >>>(d_in, d_a, d_b);
-        //InputFunction(in);
-        
-        // copy result from device to host
-        cudaMemcpy(a, d_a, SIZE_A, cudaMemcpyDeviceToHost);
-        cudaMemcpy(b, d_b, SIZE_B, cudaMemcpyDeviceToHost);
-        
+        RoundFunction<<< 1,1 >>>(d_a, d_b);
+#else
+        InputFunction(in);
         RoundFunction();
+#endif  
     }
     
     //padding
@@ -100,27 +113,29 @@ void Hash(char* input, char* output)
             in[q] |= (uint32_t)((unsigned char)(last_block[q*sizeof(uint32_t)+w])) << (8*w);
     }
     free(last_block);
-    
+#ifdef INPUT_FUNC_GPU
     // copy host memory to device //JR
     cudaMemcpy(d_in, in, SIZE_IN , cudaMemcpyHostToDevice);
     
     // call gpu
-   InputFunction<<< grid, threads >>>(d_in, d_a, d_b);
-   //InputFunction(in);
-    
-    // copy result from device to host
-    cudaMemcpy(a, d_a, SIZE_A, cudaMemcpyDeviceToHost);
-    cudaMemcpy(b, d_b, SIZE_B, cudaMemcpyDeviceToHost);
-    
+    InputFunction<<< grid, threads >>>(d_in, d_a, d_b);
+    RoundFunction<<< 1,1 >>>(d_a, d_b);
+#else
+    InputFunction(in);
     RoundFunction();
-   
+#endif
+ 
    //do some iterations without new input
     for(uint32_t i=0; i<BI; i++)
-        RoundFunction();
+        RoundFunction<<< 1,1 >>>(d_a, d_b);
     
     //collect 32 output characters
     for(uint32_t i=0;i<32/(2*sizeof(uint32_t));i++){
-        RoundFunction();
+        RoundFunction<<< 1,1 >>>(d_a, d_b);
+        
+        // copy result from device to host
+        cudaMemcpy(a, d_a, SIZE_A, cudaMemcpyDeviceToHost);
+        
         OutputFunction(out);
 
         for(unsigned int q=0; q<2; q++)
@@ -128,82 +143,86 @@ void Hash(char* input, char* output)
                 output[i*sizeof(uint32_t)*2+q*sizeof(uint32_t)+w] = (char)((out[q] >> (8*w)) & 0xFF);
     }
     output[32]='\0';
-    
+
+#ifdef TIMER
     // stop and destroy timer //JR
-    //cudaEventCreate(&stop);
-    //cudaEventRecord(stop, NULL);
-    //cudaEventSynchronize(stop);
-    //cudaEventElapsedTime(&msecTotal, start, stop);
-    
+    cudaEventCreate(&stop);
+    cudaEventRecord(stop, NULL);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&msecTotal, start, stop);
+    printf("Processing time: %f (ms)\n", msecTotal);
+#endif
     //free memory
+#ifdef INPUT_FUNC_GPU
     cudaFree(d_in);
     cudaFree(d_a);
     cudaFree(d_b);
+#endif
     cudaThreadExit();
 }
 
 
-void RoundFunction()
+__global__ void RoundFunction(uint32_t* d_a, uint32_t* d_b)
 {
     uint32_t q[BW];
     for(unsigned int j=0; j<BW; j++)
-        q[j] = b[index2(BL-1,j)];
+        q[j] = d_b[index2(BL-1,j)];
 
     for(unsigned int i=BL-1; i>0; i--)
         for(unsigned int j=0; j<BW; j++)
-            b[index2(i,j)] = b[index2(i-1,j)];
+            d_b[index2(i,j)] = d_b[index2(i-1,j)];
     
     for(unsigned int j=0; j<BW; j++)
-        b[index2(0,j)] = q[j];
+        d_b[index2(0,j)] = q[j];
 
     
     for(unsigned int i=0; i<12; i++)
-        b[index2(i+1,i%BW)] ^= a[i+1];
+        d_b[index2(i+1,i%BW)] ^= d_a[i+1];
 
    
     uint32_t A[MS];
     
     for(unsigned int i=0; i<MS; i++)
-        A[i] = a[i]^(a[(i+1)%MS]|(~a[(i+2)%MS]));
+        A[i] = d_a[i]^(d_a[(i+1)%MS]|(~d_a[(i+2)%MS]));
    
     for(unsigned int i=0; i<MS; i++)
-        a[i] = ROR(A[(7*i)%MS], i*(i+1)/2);
+        d_a[i] = ROR2(A[(7*i)%MS], i*(i+1)/2);
     
     for(unsigned int i=0; i<MS; i++)
-        A[i] = a[i]^a[(i+1)%MS]^a[(i+4)%MS];
+        A[i] = d_a[i]^d_a[(i+1)%MS]^d_a[(i+4)%MS];
    
     A[0] ^= 1;
    
     for(unsigned int i=0; i<MS; i++) 
-        a[i] = A[i];
+        d_a[i] = A[i];
 
    
     for(unsigned int j=0; j<BW; j++)
-        a[j+13] ^= q[j];
+        d_a[j+13] ^= q[j];
 }
 
-/*
-void InputFunction(uint32_t* in)
+#ifdef INPUT_FUNC_GPU
+__global__ void InputFunction(uint32_t* in, uint32_t* d_a, uint32_t* d_b)
 {
-   
+    //unsigned int j = threadIdx.x; 
+    
+    for(unsigned int j=0; j<BW; j++) 
+        d_a[j+16] ^= in[j];
+    
+    for(unsigned int j=0; j<BW; j++)
+        d_b[j] ^= in[j];
+}
+
+#else
+    void InputFunction(uint32_t* in)
+{  
     for(unsigned int j=0; j<BW; j++) 
         a[j+16] ^= in[j];
     
     for(unsigned int j=0; j<BW; j++) 
         b[index2(0,j)] ^= in[j];
 }
-*/
-
-__global__ void InputFunction(uint32_t* in, uint32_t* d_a, uint32_t* d_b)
-{
-    unsigned int j = threadIdx.x; 
-
-    //for(unsigned int j=0; j<BW; j++) 
-        d_a[j+16] ^= in[j];
-    
-    //for(unsigned int j=0; j<BW; j++) 
-        d_b[index1(0,j)] ^= in[j];
-}
+#endif
 
 void OutputFunction(uint32_t* out)
 {
