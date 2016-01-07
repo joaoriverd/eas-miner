@@ -4,6 +4,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define MS  23
+#define BW  5
+#define BL  48
+#define BI  17
+
 void RoundFunction();
 
 void InputFunction(uint32_t* in);

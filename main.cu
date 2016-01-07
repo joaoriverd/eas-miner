@@ -1,9 +1,19 @@
-#include "hash.h"
+#include "hash.cuh"
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include "common.h"
 #include "interface.h"
+#include <time.h> //JR
+
+__global__ void DummyGPUCall(uint32_t* dummy);
+
+uint32_t* d_a;
+uint32_t* d_b;
+uint32_t* d_in;
+
+clock_t start, end;
+double cpu_time_used;
 
 bool next_nonce(char *c){
     if((*c)=='\0'){
@@ -68,6 +78,9 @@ void benchmark(void){
             //32 chars + '\0' for binary output
             char output_hash[33];
             
+            cudaMemset(d_a,0,SIZE_A);
+            cudaMemset(d_b,0,SIZE_B);
+            
             //calculate hash
             Hash(input, output_hash);
 
@@ -91,6 +104,16 @@ void benchmark(void){
 }
 
 int main(int argc, char *argv[]){
+    
+    // Allocate memory for device 
+    cudaMalloc((void**) &d_a, SIZE_A);
+    cudaMalloc((void**) &d_b, SIZE_B);
+    cudaMalloc((void**) &d_in, SIZE_IN);
+    cudaMemset(d_a,0,SIZE_A);
+    cudaMemset(d_b,0,SIZE_B);
+        
+    //Dummy call //JR
+    DummyGPUCall<<<1,1>>>(d_a);
     
    	if ((argc==2) && (strcmp(argv[1],"-benchmark")==0) ){
         benchmark();
@@ -116,8 +139,14 @@ int main(int argc, char *argv[]){
                 repeat_ptr[j*baseInputSize+i]=baseInput[i];
         input[baseInputSize*muliplier+nonce_size]='\0';
 
+        start = clock();
+        
         //do hash
         Hash(input, output_hash);
+        
+        end = clock();
+        cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+        printf("Processing time: %f seconds\n", cpu_time_used);
         
         //convert binary hash to printable hex
         char output[65];
@@ -132,7 +161,18 @@ int main(int argc, char *argv[]){
         printf("------------OR-------------\n");
         printf("usage: %s -benchmark\n", argv[0]);
     }
+    
+    //Free GPU mem
+    cudaFree(d_in);
+    cudaFree(d_a);
+    cudaFree(d_b);
+     
+    cudaThreadExit();
 
 	return 0;
 }
 
+__global__ void DummyGPUCall(uint32_t* dummy){
+    
+    dummy[1] = 0;
+}
