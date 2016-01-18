@@ -1,23 +1,10 @@
 #include <stdio.h>
 #include <string.h>
+#include "hash.cuh"
 
-#define INPUT_FUNC_GPU
-
-#ifdef INPUT_FUNC_GPU
- #include "hash.cuh"
-#else
- #include "hash.h"
-#endif
-
-#ifdef INPUT_FUNC_GPU
 __device__ inline unsigned int index2(unsigned int i, unsigned int j){
     return (unsigned int) (i*BW+j);
 }
-#else
-inline unsigned int index2(unsigned int i, unsigned int j){
-    return (unsigned int) (i*BW+j);
-}   
-#endif
 
 __device__ inline uint32_t ROR2(uint32_t x, int y){
     int y_mod = ((y & 0x1F) + 32) & 0x1F;
