@@ -36,7 +36,7 @@ endif
 
 
 # Common binaries
-NVCC            ?= $(CUDA_BIN_PATH)/nvcc
+NVCC            ?= $(CUDA_BIN_PATH)/nvcc --optimize 3
 CC 				=  g++
 
 # Extra user flags

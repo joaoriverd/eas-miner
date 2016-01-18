@@ -6,11 +6,18 @@
 #include "interface.h"
 #include <time.h> //JR
 
-__global__ void DummyGPUCall(uint32_t* dummy);
+#define SIZE_INPUT INPUT_SIZE+NONCE_SIZE+1
+#define SIZE_OUTPUT 33
+
+__global__ void DummyGPUCall();
 
 uint32_t* d_a;
 uint32_t* d_b;
 uint32_t* d_in;
+uint32_t* d_inputSize;
+char* d_input;
+char* d_output;
+uint32_t* d_debug;
 
 clock_t start, end;
 double cpu_time_used;
@@ -50,6 +57,7 @@ bool check_hash(char* hash){
 
 
 void benchmark(void){
+    
     // + 1 for termination '\0'
     char input[INPUT_SIZE+NONCE_SIZE+1];
     
@@ -78,11 +86,24 @@ void benchmark(void){
             //32 chars + '\0' for binary output
             char output_hash[33];
             
-            cudaMemset(d_a,0,SIZE_A);
-            cudaMemset(d_b,0,SIZE_B);
+            /*****************************/
+            //dim3 threads,grid; //JR
+            // setup execution parameters
+            //threads = dim3(BW, 1); // dummy fix this //JR
+            //grid = dim3(1,1); // dummy fix this //JR
+            /*****************************/
             
+            uint32_t inputSize= (uint32_t)strlen(input);
+            
+            // copy host memory to device //JR
+            cudaMemcpy(d_input, input, SIZE_INPUT , cudaMemcpyHostToDevice);
+            cudaMemcpy(d_inputSize, &inputSize, sizeof(uint32_t), cudaMemcpyHostToDevice);
+        
             //calculate hash
-            Hash(input, output_hash);
+            Hash<<<1,1>>>(d_input, d_output, d_inputSize, d_debug);
+            
+            // copy result from device to host
+            cudaMemcpy(output_hash, d_output, SIZE_OUTPUT, cudaMemcpyDeviceToHost);
 
             //convert binary hash to printable hex
             char output_str[65];
@@ -100,20 +121,28 @@ void benchmark(void){
         //validate with server
         validateHash(base, nonce);
     }
+    
 
 }
 
 int main(int argc, char *argv[]){
     
     // Allocate memory for device 
-    cudaMalloc((void**) &d_a, SIZE_A);
-    cudaMalloc((void**) &d_b, SIZE_B);
-    cudaMalloc((void**) &d_in, SIZE_IN);
-    cudaMemset(d_a,0,SIZE_A);
-    cudaMemset(d_b,0,SIZE_B);
+    //cudaMalloc((void**) &d_a, SIZE_A);
+    //cudaMalloc((void**) &d_b, SIZE_B);
+    //cudaMalloc((void**) &d_in, SIZE_IN);
+    //cudaMemset(d_a,0,SIZE_A);
+    //cudaMemset(d_b,0,SIZE_B);
+    cudaMalloc((void**) &d_input, SIZE_INPUT);
+    cudaMalloc((void**) &d_output, SIZE_OUTPUT);
+    cudaMalloc((void**) &d_inputSize, sizeof(uint32_t));
+    cudaMalloc((void**) &d_debug, sizeof(uint32_t));
+    cudaMemset(d_inputSize,0,sizeof(uint32_t));
+    cudaMemset(d_input,0,SIZE_INPUT);
+    cudaMemset(d_output,0,SIZE_OUTPUT);
         
     //Dummy call //JR
-    DummyGPUCall<<<1,1>>>(d_a);
+    DummyGPUCall<<<1,1>>>();
     
    	if ((argc==2) && (strcmp(argv[1],"-benchmark")==0) ){
         benchmark();
@@ -141,8 +170,23 @@ int main(int argc, char *argv[]){
 
         start = clock();
         
-        //do hash
-        Hash(input, output_hash);
+        uint32_t inputSize= (uint32_t)strlen(input);
+         
+           
+        // copy host memory to device //JR
+        cudaMemcpy(d_input, input, SIZE_INPUT , cudaMemcpyHostToDevice);
+        cudaMemcpy(d_inputSize, &inputSize, sizeof(uint32_t) , cudaMemcpyHostToDevice);
+        
+        //calculate hash
+        Hash<<<1,1>>>(d_input, d_output, d_inputSize, d_debug);
+            
+        // copy result from device to host
+        cudaMemcpy(output_hash, d_output, SIZE_OUTPUT, cudaMemcpyDeviceToHost);
+        
+        //Debug
+        uint32_t debug;
+        cudaMemcpy(&debug, d_debug, sizeof(uint32_t), cudaMemcpyDeviceToHost);
+        printf("debug var: %d\n", debug);
         
         end = clock();
         cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
@@ -163,16 +207,15 @@ int main(int argc, char *argv[]){
     }
     
     //Free GPU mem
-    cudaFree(d_in);
-    cudaFree(d_a);
-    cudaFree(d_b);
+    cudaFree(d_input);
+    cudaFree(d_output);
+    cudaFree(d_inputSize);
+    cudaFree(d_debug);
      
     cudaThreadExit();
 
 	return 0;
 }
 
-__global__ void DummyGPUCall(uint32_t* dummy){
-    
-    dummy[1] = 0;
+__global__ void DummyGPUCall(){
 }

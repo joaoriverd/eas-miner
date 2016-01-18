@@ -19,12 +19,12 @@ extern uint32_t* d_in;
 extern uint32_t* d_a;
 extern uint32_t* d_b;
 
-__global__ void RoundFunction(uint32_t* d_a, uint32_t* d_b);
+__device__ void RoundFunction(uint32_t* a, uint32_t* b);
 
-__global__ void InputFunction(uint32_t* in, uint32_t* d_a, uint32_t* d_b);
-void OutputFunction(uint32_t* out);
+__device__ void InputFunction(uint32_t* in, uint32_t* a, uint32_t* b);
+__device__ void OutputFunction(uint32_t* out, uint32_t* a);
 
-void Hash(char* input, char* output);
+__global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t* debug);
 
 
 #endif
