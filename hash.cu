@@ -2,6 +2,8 @@
 #include <string.h>
 #include "hash.cuh"
 
+#define BW4 (sizeof(uint32_t)*BW)
+
 __device__ void RoundFunction_CUDA(uint32_t* a, uint32_t* b);
 __device__ void RF_L1(uint32_t *d_q, uint32_t *d_b);
 __device__ void RF_L2(uint32_t *d_b);
@@ -42,14 +44,15 @@ __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t
     uint32_t inputSize = inputSize_in[0];
 
     *debug = 0;
-    unsigned int p = 0;
+    uint32_t inputSize_norm = inputSize/BW4;
+    unsigned int p = inputSize-inputSize%BW4;
+    
      d_p = 0;
-    while(p+sizeof(uint32_t)*BW <=inputSize) {
+    for(unsigned int i=0; i<inputSize_norm; i++){
         inLoop(in,input,&d_p);
-        p += sizeof(uint32_t)*BW;
         InputFunction(in,a,b);
-        //RoundFunction(a,b);
-        RoundFunction_CUDA(a,b); // test LZAVALAM
+        RoundFunction(a,b);
+        //RoundFunction_CUDA(a,b); // test LZAVALAM
         (*debug)++;
     }
     
@@ -61,9 +64,9 @@ __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t
     for(unsigned int i=0; i<(BW+1)*sizeof(uint32_t); i++)
         last_block[i] = 0;
     
-    for(uint32_t i=0;i<inputSize-p;i++)
+    for(uint32_t i=0;i<inputSize%BW4;i++)
         last_block[i]=input[p+i];
-    last_block[inputSize-p]=(char) 0x01;
+    last_block[inputSize%BW4]=(char) 0x01;
     
     d_p = 0;
     inLoop(in,last_block,&d_p);
@@ -108,7 +111,7 @@ __device__ void RoundFunction_CUDA(uint32_t* a, uint32_t* b)
 }
 __device__ void RoundFunction(uint32_t* a, uint32_t* b)
 {
-    __shared__ uint32_t q[BW];
+    uint32_t q[BW];
     for(unsigned int j=0; j<BW; j++)
         q[j] = b[index2(BL-1,j)];
 
@@ -124,7 +127,7 @@ __device__ void RoundFunction(uint32_t* a, uint32_t* b)
         b[index2(i+1,i%BW)] ^= a[i+1];
 
    
-    __shared__ uint32_t A[MS];
+    uint32_t A[MS];
     
     for(unsigned int i=0; i<MS; i++)
         A[i] = a[i]^(a[(i+1)%MS]|(~a[(i+2)%MS]));
