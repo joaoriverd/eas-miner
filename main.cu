@@ -6,9 +6,6 @@
 #include "interface.h"
 #include <time.h> //JR
 
-#define SIZE_INPUT INPUT_SIZE+NONCE_SIZE+1
-#define SIZE_OUTPUT 33
-
 __global__ void DummyGPUCall();
 
 uint32_t* d_a;
@@ -17,6 +14,7 @@ uint32_t* d_in;
 uint32_t* d_inputSize;
 char* d_input;
 char* d_output;
+uint32_t* d_p;
 uint32_t* d_debug;
 
 clock_t start, end;
@@ -57,7 +55,7 @@ bool check_hash(char* hash){
 
 
 void benchmark(void){
-    
+#if 0    
     // + 1 for termination '\0'
     char input[INPUT_SIZE+NONCE_SIZE+1];
     
@@ -122,21 +120,21 @@ void benchmark(void){
         validateHash(base, nonce);
     }
     
-
+#endif
 }
 
 int main(int argc, char *argv[]){
     
     // Allocate memory for device 
-    //cudaMalloc((void**) &d_a, SIZE_A);
-    //cudaMalloc((void**) &d_b, SIZE_B);
-    //cudaMalloc((void**) &d_in, SIZE_IN);
+    cudaMalloc((void**) &d_a, SIZE_A);
+    cudaMalloc((void**) &d_b, SIZE_B);
+    cudaMalloc((void**) &d_in, SIZE_IN);
     //cudaMemset(d_a,0,SIZE_A);
     //cudaMemset(d_b,0,SIZE_B);
     cudaMalloc((void**) &d_input, SIZE_INPUT);
     cudaMalloc((void**) &d_output, SIZE_OUTPUT);
     cudaMalloc((void**) &d_inputSize, sizeof(uint32_t));
-    cudaMalloc((void**) &d_debug, sizeof(uint32_t));
+    cudaMalloc((void**) &d_p, sizeof(uint32_t));
     cudaMemset(d_inputSize,0,sizeof(uint32_t));
     cudaMemset(d_input,0,SIZE_INPUT);
     cudaMemset(d_output,0,SIZE_OUTPUT);
@@ -170,15 +168,8 @@ int main(int argc, char *argv[]){
 
         start = clock();
         
-        uint32_t inputSize= (uint32_t)strlen(input);
-         
-           
-        // copy host memory to device //JR
-        cudaMemcpy(d_input, input, SIZE_INPUT , cudaMemcpyHostToDevice);
-        cudaMemcpy(d_inputSize, &inputSize, sizeof(uint32_t) , cudaMemcpyHostToDevice);
-        
         //calculate hash
-        Hash<<<1,1>>>(d_input, d_output, d_inputSize, d_debug);
+        Hash(input, output_hash);
             
         // copy result from device to host
         cudaMemcpy(output_hash, d_output, SIZE_OUTPUT, cudaMemcpyDeviceToHost);
@@ -186,11 +177,6 @@ int main(int argc, char *argv[]){
         end = clock();
         cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
         printf("Processing time: %f seconds\n", cpu_time_used);
-        
-        //Debug
-        uint32_t debug;
-        cudaMemcpy(&debug, d_debug, sizeof(uint32_t), cudaMemcpyDeviceToHost);
-        printf("debug var: %d\n", debug);
         
         //convert binary hash to printable hex
         char output[65];

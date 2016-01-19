@@ -14,20 +14,25 @@
 #define SIZE_IN BW*sizeof(uint32_t)
 #define SIZE_B BL*BW*sizeof(uint32_t)
 #define SIZE_OUT 2*sizeof(uint32_t)
+#define SIZE_INPUT INPUT_SIZE+NONCE_SIZE+1
+#define SIZE_OUTPUT 33
 
 extern uint32_t* d_in;
 extern uint32_t* d_a;
 extern uint32_t* d_b;
+extern char* d_input;
+extern char* d_output;
+extern uint32_t* d_p;
 
-__device__ void RoundFunction(uint32_t* a, uint32_t* b);
+__global__ void RoundFunction(uint32_t* a, uint32_t* b);
 
-__device__ void InputFunction(uint32_t* in, uint32_t* a, uint32_t* b);
-__device__ void OutputFunction(uint32_t* out, uint32_t* a);
+__global__ void InputFunction(uint32_t* in, uint32_t* a, uint32_t* b);
+__global__ void OutputFunction(uint32_t* out, uint32_t* a);
 
-__device__ void inLoop(uint32_t* in, char* input, uint32_t* p);
-__device__ void outLoop(uint32_t* out, char* output, uint32_t* i);
+__global__ void inLoop(uint32_t* in, char* input, uint32_t* p);
+__global__ void outLoop(uint32_t* out, char* output, uint32_t* i);
 
-__global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t* debug);
+void Hash(char* input, char* output);
 
 
 #endif
