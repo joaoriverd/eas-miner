@@ -183,14 +183,14 @@ int main(int argc, char *argv[]){
         // copy result from device to host
         cudaMemcpy(output_hash, d_output, SIZE_OUTPUT, cudaMemcpyDeviceToHost);
         
+        end = clock();
+        cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+        printf("Processing time: %f seconds\n", cpu_time_used);
+        
         //Debug
         uint32_t debug;
         cudaMemcpy(&debug, d_debug, sizeof(uint32_t), cudaMemcpyDeviceToHost);
         printf("debug var: %d\n", debug);
-        
-        end = clock();
-        cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
-        printf("Processing time: %f seconds\n", cpu_time_used);
         
         //convert binary hash to printable hex
         char output[65];

@@ -24,6 +24,9 @@ __device__ void RoundFunction(uint32_t* a, uint32_t* b);
 __device__ void InputFunction(uint32_t* in, uint32_t* a, uint32_t* b);
 __device__ void OutputFunction(uint32_t* out, uint32_t* a);
 
+__device__ void inLoop(uint32_t* in, char* input, uint32_t* p);
+__device__ void outLoop(uint32_t* out, char* output, uint32_t* i);
+
 __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t* debug);
 
 

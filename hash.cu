@@ -15,10 +15,12 @@ __device__ inline uint32_t ROR2(uint32_t x, int y){
 __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t* debug)
 {
     
-    uint32_t a[MS];
-    uint32_t b[BL*BW];
-    uint32_t in[BW];
-    uint32_t out[2];
+    __shared__ uint32_t a[MS];
+    __shared__ uint32_t b[BL*BW];
+    __shared__ uint32_t in[BW];
+    __shared__ uint32_t out[2];
+    __shared__ unsigned int d_p;
+    __shared__ unsigned int d_i;
 
     //init with zeros
     for(unsigned int i=0; i<MS; i++)
@@ -26,23 +28,21 @@ __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t
     for(unsigned int i=0; i<BL*BW; i++)
         b[i] = 0;
     
-    uint32_t inputSize= inputSize_in[0];
+    uint32_t inputSize = inputSize_in[0];
 
-    //*debug = inputSize;
+    *debug = 0;
     unsigned int p = 0;
+     d_p = 0;
     while(p+sizeof(uint32_t)*BW <=inputSize) {
-        for(unsigned int q=0; q<BW; q++) {
-            in[q] = 0;
-            for(unsigned int w=0; w<sizeof(uint32_t); w++)
-                in[q] |= (uint32_t)((unsigned char)(input[p+q*sizeof(uint32_t)+w])) << (8*w);
-        }
+        inLoop(in,input,&d_p);
         p += sizeof(uint32_t)*BW;
         InputFunction(in,a,b);
         RoundFunction(a,b);
+        (*debug)++;
     }
     
     //*debug = a[0];//debug
-    
+  
     //padding
     //char* last_block = (char*) calloc(BW+1, sizeof(uint32_t));
     char last_block[(BW+1)*sizeof(uint32_t)];
@@ -53,32 +53,29 @@ __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t
         last_block[i]=input[p+i];
     last_block[inputSize-p]=(char) 0x01;
     
-    for(unsigned int q=0; q<BW; q++) {
-        in[q] = 0;
-        for(unsigned int w=0; w<sizeof(uint32_t); w++)
-            in[q] |= (uint32_t)((unsigned char)(last_block[q*sizeof(uint32_t)+w])) << (8*w);
-    }
-    
+    d_p = 0;
+    inLoop(in,last_block,&d_p);
     InputFunction(in,a,b);
     RoundFunction(a,b);
+    (*debug)++;
  
    //do some iterations without new input
-    for(uint32_t i=0; i<BI; i++)
+    for(uint32_t i=0; i<BI; i++){
         RoundFunction(a,b);
-    
+        (*debug)++;
+    }
     //*debug = a[0];//debug
     
     //collect 32 output characters
+    d_i = 0;
     for(uint32_t i=0;i<32/(2*sizeof(uint32_t));i++){
         RoundFunction(a,b);
+        (*debug)++;
         OutputFunction(out,a);
-
-        for(unsigned int q=0; q<2; q++)
-            for(unsigned int w=0; w<sizeof(uint32_t); w++)
-                output[i*sizeof(uint32_t)*2+q*sizeof(uint32_t)+w] = (char)((out[q] >> (8*w)) & 0xFF);
+        outLoop(out, output, &d_i);
     }
     output[32]='\0';
-    
+ 
 }
     
 __device__ void RoundFunction(uint32_t* a, uint32_t* b)
@@ -133,4 +130,22 @@ __device__ void OutputFunction(uint32_t* out, uint32_t* a)
 {
     for(unsigned int j=0; j<2; j++)
         out[j] = a[j+1];
+}
+
+__device__ void inLoop(uint32_t* in, char* input, uint32_t* p)
+{   
+    for(unsigned int q=0; q<BW; q++) {
+            in[q] = 0;
+            for(unsigned int w=0; w<sizeof(uint32_t); w++)
+                in[q] |= (uint32_t)((unsigned char)(input[(*p)+q*sizeof(uint32_t)+w])) << (8*w);
+    }
+    (*p) += sizeof(uint32_t)*BW;
+}
+
+__device__ void outLoop(uint32_t* out, char* output, uint32_t* i)
+{   
+    for(unsigned int q=0; q<2; q++)
+            for(unsigned int w=0; w<sizeof(uint32_t); w++)
+                output[(*i)*sizeof(uint32_t)*2+q*sizeof(uint32_t)+w] = (char)((out[q] >> (8*w)) & 0xFF);
+    (*i)++;
 }
