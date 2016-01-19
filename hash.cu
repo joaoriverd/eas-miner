@@ -2,6 +2,8 @@
 #include <string.h>
 #include "hash.cuh"
 
+#define BW4 (sizeof(uint32_t)*BW)
+
 __device__ inline unsigned int index2(unsigned int i, unsigned int j){
     return (unsigned int) (i*BW+j);
 }
@@ -14,7 +16,6 @@ __device__ inline uint32_t ROR2(uint32_t x, int y){
 //note: output must be 32+1 chars (+1 for termination of string)
 __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t* debug)
 {
-    
     __shared__ uint32_t a[MS];
     __shared__ uint32_t b[BL*BW];
     __shared__ uint32_t in[BW];
@@ -29,19 +30,19 @@ __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t
         b[i] = 0;
     
     uint32_t inputSize = inputSize_in[0];
-
+    uint32_t inputSize_norm = inputSize/BW4;
+    unsigned int p = inputSize-inputSize%BW4;
+    
     *debug = 0;
-    unsigned int p = 0;
-     d_p = 0;
-    while(p+sizeof(uint32_t)*BW <=inputSize) {
+    
+    d_p = 0;
+    
+    for(unsigned int i=0; i<inputSize_norm; i++){
         inLoop(in,input,&d_p);
-        p += sizeof(uint32_t)*BW;
         InputFunction(in,a,b);
         RoundFunction(a,b);
-        (*debug)++;
+        (*debug)++; 
     }
-    
-    //*debug = a[0];//debug
   
     //padding
     //char* last_block = (char*) calloc(BW+1, sizeof(uint32_t));
@@ -49,20 +50,20 @@ __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t
     for(unsigned int i=0; i<(BW+1)*sizeof(uint32_t); i++)
         last_block[i] = 0;
     
-    for(uint32_t i=0;i<inputSize-p;i++)
+    for(uint32_t i=0;i<inputSize%BW4;i++)
         last_block[i]=input[p+i];
-    last_block[inputSize-p]=(char) 0x01;
+    last_block[inputSize%BW4]=(char) 0x01;
     
     d_p = 0;
     inLoop(in,last_block,&d_p);
     InputFunction(in,a,b);
     RoundFunction(a,b);
-    (*debug)++;
+    //(*debug)++;
  
    //do some iterations without new input
     for(uint32_t i=0; i<BI; i++){
         RoundFunction(a,b);
-        (*debug)++;
+        //(*debug)++;
     }
     //*debug = a[0];//debug
     
@@ -70,17 +71,18 @@ __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t
     d_i = 0;
     for(uint32_t i=0;i<32/(2*sizeof(uint32_t));i++){
         RoundFunction(a,b);
-        (*debug)++;
+        //(*debug)++;
         OutputFunction(out,a);
         outLoop(out, output, &d_i);
     }
     output[32]='\0';
- 
+
 }
     
 __device__ void RoundFunction(uint32_t* a, uint32_t* b)
 {
     uint32_t q[BW];
+    
     for(unsigned int j=0; j<BW; j++)
         q[j] = b[index2(BL-1,j)];
 
@@ -119,6 +121,7 @@ __device__ void RoundFunction(uint32_t* a, uint32_t* b)
 
 __device__ void InputFunction(uint32_t* in, uint32_t* a, uint32_t* b)
 {  
+    //unsigned int j = threadIdx.x; 
     for(unsigned int j=0; j<BW; j++) 
         a[j+16] ^= in[j];
     
