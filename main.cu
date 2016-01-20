@@ -66,6 +66,13 @@ void benchmark(void){
 
     //holder for the nonce
     char nonce[NONCE_SIZE+1];
+    
+    /*****************************/
+    dim3 threads,grid; //JR
+    //setup execution parameters
+    threads = dim3(BW, BL-1); // dummy fix this //JR
+    grid = dim3(1,1); // dummy fix this //JR
+    /*****************************/
 
     while(true){
     
@@ -86,13 +93,6 @@ void benchmark(void){
             //32 chars + '\0' for binary output
             char output_hash[33];
             
-            /*****************************/
-            //dim3 threads,grid; //JR
-            // setup execution parameters
-            //threads = dim3(BW, 1); // dummy fix this //JR
-            //grid = dim3(1,1); // dummy fix this //JR
-            /*****************************/
-            
             uint32_t inputSize= (uint32_t)strlen(input);
             
             // copy host memory to device //JR
@@ -100,7 +100,7 @@ void benchmark(void){
             cudaMemcpy(d_inputSize, &inputSize, sizeof(uint32_t), cudaMemcpyHostToDevice);
         
             //calculate hash
-            Hash<<<1,1>>>(d_input, d_output, d_inputSize, d_debug);
+            Hash<<<grid,threads>>>(d_input, d_output, d_inputSize, d_debug);
             
             // copy result from device to host
             cudaMemcpy(output_hash, d_output, SIZE_OUTPUT, cudaMemcpyDeviceToHost);
@@ -172,13 +172,19 @@ int main(int argc, char *argv[]){
         
         uint32_t inputSize= (uint32_t)strlen(input);
          
+        /*****************************/
+        dim3 threads,grid; //JR
+        // setup execution parameters
+        threads = dim3(BW, BL-1); // dummy fix this //JR
+        grid = dim3(1,1); // dummy fix this //JR
+        /*****************************/
            
         // copy host memory to device //JR
         cudaMemcpy(d_input, input, SIZE_INPUT , cudaMemcpyHostToDevice);
         cudaMemcpy(d_inputSize, &inputSize, sizeof(uint32_t) , cudaMemcpyHostToDevice);
         
         //calculate hash
-        Hash<<<1,1>>>(d_input, d_output, d_inputSize, d_debug);
+        Hash<<<grid,threads>>>(d_input, d_output, d_inputSize, d_debug);
             
         // copy result from device to host
         cudaMemcpy(output_hash, d_output, SIZE_OUTPUT, cudaMemcpyDeviceToHost);
