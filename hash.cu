@@ -45,7 +45,6 @@ __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t
     int Idx_y =  threadIdx.y;
     //int Idx_z =  threadIdx.z;
 
-    if(Idx_y==0){
       //init with zeros
     for(unsigned int i=0; i<MS; i++)
         a[i] = 0;
@@ -57,7 +56,6 @@ __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t
     p = inputSize-inputSize%BW4;
     
      d_p = 0;
-    }
      
     for(unsigned int i=0; i<inputSize_norm>>1; i++){
 
