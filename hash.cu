@@ -5,7 +5,7 @@
 #define BW4 (sizeof(uint32_t)*BW)
 
 __device__ void RoundFunction_CUDA(uint32_t* a, uint32_t* b);
-__device__ void RoundFunction1(uint32_t* a, uint32_t* b, uint32_t* b2);
+__device__ void RoundFunction1(uint32_t* a, uint32_t* a2, uint32_t* b, uint32_t* b2);
 __device__ void RF_L1(uint32_t *d_q, uint32_t *d_b);
 __device__ void RF_L2(uint32_t *d_b);
 __device__ void RF_L3(uint32_t *d_q,uint32_t *d_b);
@@ -30,51 +30,54 @@ __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t
 {
     
     __shared__ uint32_t a[MS];
+    __shared__ uint32_t a2[MS];
     __shared__ uint32_t b[BL*BW];
     __shared__ uint32_t b2[BL*BW];
     __shared__ uint32_t in[BW];
     __shared__ uint32_t out[2];
     __shared__ unsigned int d_p;
     __shared__ unsigned int d_i;
+    
+    __shared__ uint32_t inputSize;
+    __shared__ uint32_t inputSize_norm;
+    __shared__ unsigned int p;
+    
+    int Idx_y =  threadIdx.y;
+    //int Idx_z =  threadIdx.z;
 
-
+    if(Idx_y==0){
       //init with zeros
     for(unsigned int i=0; i<MS; i++)
         a[i] = 0;
     for(unsigned int i=0; i<BL*BW; i++)
         b[i] = 0;
     
-    uint32_t inputSize = inputSize_in[0];
-
-    *debug = 0;
-    uint32_t inputSize_norm = inputSize/BW4;
-    unsigned int p = inputSize-inputSize%BW4;
+    inputSize = inputSize_in[0];
+    inputSize_norm = inputSize/BW4;
+    p = inputSize-inputSize%BW4;
     
      d_p = 0;
+    }
      
-     int Idx_y =  threadIdx.y;
-    
-    for(unsigned int i=0; i<inputSize_norm/2; i++){
-        //if(Idx_y = 0){
-      if(Idx_y<2){
+    for(unsigned int i=0; i<819/*inputSize_norm>>1*/; i++){
+
+      if(Idx_y==0){
         inLoop(in,input,&d_p);
         InputFunction(in,a,b);
        }
-        RoundFunction1(a,b,b2);        
-      if(Idx_y<2){
+        RoundFunction1(a,a2,b,b2);        
+      if(Idx_y==0){
         inLoop(in,input,&d_p);
-        InputFunction(in,a,b2);
+        InputFunction(in,a2,b2);
       }
-        RoundFunction1(a,b2,b);
-        //}
-        //__syncthreads();
-        //(*debug)++;
+        RoundFunction1(a2,a,b2,b);
+
     }
     __syncthreads();
     
-    *debug = a[0];//debug
+    *debug =inputSize_norm>>1;//debug
     
-    if(Idx_y<2){
+    if(Idx_y==0){
     char last_block[(BW+1)*sizeof(uint32_t)];
     for(unsigned int i=0; i<(BW+1)*sizeof(uint32_t); i++)
         last_block[i] = 0;
@@ -125,20 +128,21 @@ __device__ void RoundFunction_CUDA(uint32_t* a, uint32_t* b)
     RF_L9(q,a);
 }
 
-__device__ void RoundFunction1(uint32_t* a, uint32_t* b, uint32_t* b2)
+__device__ void RoundFunction1(uint32_t* a,uint32_t* a2, uint32_t* b, uint32_t* b2)
 {
     //__shared__ uint32_t q[BW];
     //__shared__ uint32_t *temp;
     
-    uint32_t A[MS];
+    //__shared__ uint32_t A[MS];
     
     int j =  threadIdx.x;
     int i =  threadIdx.y;
 
-   if(i<2){
+
+   //if(i==0){
     //for(unsigned int j=0; j<BW; j++)
-        b2[index2(0,j)] = b[index2(BL-1,j)];
-   }
+   //     b2[index2(0,j)] = b[index2(BL-1,j)];
+   //}
    __syncthreads();
    //if(i<2){
     //for(unsigned int i=0; i<BL-1; i++){
@@ -146,31 +150,35 @@ __device__ void RoundFunction1(uint32_t* a, uint32_t* b, uint32_t* b2)
             b2[index2(i+1,j)] = b[index2(i,j)];
     //}
   // }
-  __syncthreads();
-  if(i<2){
+  //__syncthreads();
+  if(j==0 && i<12){
     //for(unsigned int j=0; j<BW; j++)
         //b[index2(0,j)] = q[j];
+   // b2[index2(0,j)] = b[index2(BL-1,j)];
     
-    for(unsigned int i=0; i<12; i++)
+    //for(unsigned int i=0; i<12; i++)
         b2[index2(i+1,i%BW)] ^= a[i+1];
    
+  }
+  if(j==0 && i<MS){
+    //for(unsigned int i=0; i<MS; i++)
+        a2[i] = a[i]^(a[(i+1)%MS]|(~a[(i+2)%MS]));
+   
+    //for(unsigned int i=0; i<MS; i++)
+        a[i] = ROR2(a2[(7*i)%MS], i*(i+1)/2);
     
-    for(unsigned int i=0; i<MS; i++)
-        A[i] = a[i]^(a[(i+1)%MS]|(~a[(i+2)%MS]));
+    //for(unsigned int i=0; i<MS; i++)
+        a2[i] = a[i]^a[(i+1)%MS]^a[(i+4)%MS];
    
-    for(unsigned int i=0; i<MS; i++)
-        a[i] = ROR2(A[(7*i)%MS], i*(i+1)/2);
-    
-    for(unsigned int i=0; i<MS; i++)
-        A[i] = a[i]^a[(i+1)%MS]^a[(i+4)%MS];
+    a2[0] ^= 1;
    
-    A[0] ^= 1;
-   
-    for(unsigned int i=0; i<MS; i++) 
-        a[i] = A[i];
-   
+    //for(unsigned int i=0; i<MS; i++) 
+    //    a[i] = a2[i];
+  }
+  if(i==0){
+      b2[index2(0,j)] = b[index2(BL-1,j)];
     //for(unsigned int j=0; j<BW; j++)
-        a[j+13] ^= b2[index2(0,j)];//q[j];
+        a2[j+13] ^= b2[index2(0,j)];//q[j];
   }
 }
 
