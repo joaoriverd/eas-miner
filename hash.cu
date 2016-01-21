@@ -58,22 +58,23 @@ __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t
      d_p = 0;
      
     for(unsigned int i=0; i<inputSize_norm>>1; i++){
-
-      if(Idx_y==0){
+        __syncthreads();
         inLoop(in,input,&d_p);
+        __syncthreads();
         InputFunction(in,a,b);
-       }
-        RoundFunction1(a,a2,b,b2);        
-      if(Idx_y==0){
+        __syncthreads();
+        RoundFunction1(a,a2,b,b2);
+        __syncthreads();
         inLoop(in,input,&d_p);
+        __syncthreads();
         InputFunction(in,a2,b2);
-      }
+        __syncthreads();
         RoundFunction1(a2,a,b2,b);
 
     }
     __syncthreads();
     
-    *debug =inputSize_norm>>1;//debug
+    *debug =a[0];//debug
     
     if(Idx_y==0){
     char last_block[(BW+1)*sizeof(uint32_t)];
@@ -112,8 +113,6 @@ __device__ void RoundFunction1(uint32_t* a,uint32_t* a2, uint32_t* b, uint32_t* 
 {    
     int j =  threadIdx.x;
     int i =  threadIdx.y;
-    
-    __syncthreads();
    
     b2[index2(i+1,j)] = b[index2(i,j)];
 
@@ -126,11 +125,11 @@ __device__ void RoundFunction1(uint32_t* a,uint32_t* a2, uint32_t* b, uint32_t* 
         a[i] = ROR2(a2[(7*i)%MS], i*(i+1)/2);
         a2[i] = a[i]^a[(i+1)%MS]^a[(i+4)%MS];
         a2[0] ^= 1;
-  }
-  if(i==0){
-      b2[index2(0,j)] = b[index2(BL-1,j)];
+    }
+    if(i==0){
+        b2[index2(0,j)] = b[index2(BL-1,j)];
         a2[j+13] ^= b2[index2(0,j)];
-  }
+    }
 }
 
 __device__ void RoundFunction(uint32_t* a, uint32_t* b)
@@ -188,11 +187,11 @@ __device__ void RoundFunction(uint32_t* a, uint32_t* b)
 __device__ void InputFunction(uint32_t* in, uint32_t* a, uint32_t* b)
 {  
     int j =  threadIdx.x;
-    if(j<BW){
-    //for(unsigned int j=0; j<BW; j++) 
-        a[j+16] ^= in[j];
+    int i =  threadIdx.y;
     
-    //for(unsigned int j=0; j<BW; j++) 
+    if(i==0){
+        a[j+16] ^= in[j];
+   
         b[index2(0,j)] ^= in[j];
     }
 }
@@ -206,13 +205,15 @@ __device__ void OutputFunction(uint32_t* out, uint32_t* a)
 __device__ void inLoop(uint32_t* in, char* input, uint32_t* p)
 {   
     int q =  threadIdx.x;
-    if(q<BW){
-    //for(unsigned int q=0; q<BW; q++) {
+    int w =  threadIdx.y;
+
+    if(w==0){
             in[q] = 0;
             for(unsigned int w=0; w<sizeof(uint32_t); w++)
-                in[q] |= (uint32_t)((unsigned char)(input[(*p)+q*sizeof(uint32_t)+w])) << (w<<3);
-    }
+                in[q] |= (uint32_t)((unsigned char)(input[(*p)+(q<<2)+w])) << (w<<3);
+
     (*p) += sizeof(uint32_t)*BW;
+    }
 }
 
 __device__ void outLoop(uint32_t* out, char* output, uint32_t* i)
