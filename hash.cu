@@ -59,7 +59,7 @@ __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t
      d_p = 0;
     }
      
-    for(unsigned int i=0; i<819/*inputSize_norm>>1*/; i++){
+    for(unsigned int i=0; i<inputSize_norm>>1; i++){
 
       if(Idx_y==0){
         inLoop(in,input,&d_p);
@@ -97,7 +97,6 @@ __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t
         RoundFunction(a,b);
         //(*debug)++;
     }
-    //*debug = a[0];//debug
     
     //collect 32 output characters
     d_i = 0;
@@ -110,75 +109,29 @@ __global__ void Hash(char* input, char* output, uint32_t* inputSize_in, uint32_t
     output[32]='\0';
     }
 }
-    
-
-__device__ void RoundFunction_CUDA(uint32_t* a, uint32_t* b)
-{
-    uint32_t q[BW];
-    RF_L1(q,b);
-    RF_L2(b);
-    RF_L3(q,b);
-    RF_L4(a,b);
-   
-    uint32_t A[MS];
-    RF_L5(A,a);
-    RF_L6(A,a);
-    RF_L7(A,a);
-    RF_L8(A,a);
-    RF_L9(q,a);
-}
 
 __device__ void RoundFunction1(uint32_t* a,uint32_t* a2, uint32_t* b, uint32_t* b2)
-{
-    //__shared__ uint32_t q[BW];
-    //__shared__ uint32_t *temp;
-    
-    //__shared__ uint32_t A[MS];
-    
+{    
     int j =  threadIdx.x;
     int i =  threadIdx.y;
-
-
-   //if(i==0){
-    //for(unsigned int j=0; j<BW; j++)
-   //     b2[index2(0,j)] = b[index2(BL-1,j)];
-   //}
-   __syncthreads();
-   //if(i<2){
-    //for(unsigned int i=0; i<BL-1; i++){
-    //    for(unsigned int j=0; j<BW; j++)
-            b2[index2(i+1,j)] = b[index2(i,j)];
-    //}
-  // }
-  //__syncthreads();
-  if(j==0 && i<12){
-    //for(unsigned int j=0; j<BW; j++)
-        //b[index2(0,j)] = q[j];
-   // b2[index2(0,j)] = b[index2(BL-1,j)];
     
-    //for(unsigned int i=0; i<12; i++)
+    __syncthreads();
+   
+    b2[index2(i+1,j)] = b[index2(i,j)];
+
+    if(j==0 && i<12){
         b2[index2(i+1,i%BW)] ^= a[i+1];
-   
-  }
-  if(j==0 && i<MS){
-    //for(unsigned int i=0; i<MS; i++)
-        a2[i] = a[i]^(a[(i+1)%MS]|(~a[(i+2)%MS]));
-   
-    //for(unsigned int i=0; i<MS; i++)
-        a[i] = ROR2(a2[(7*i)%MS], i*(i+1)/2);
+    }
     
-    //for(unsigned int i=0; i<MS; i++)
+    if(j==0 && i<MS){
+        a2[i] = a[i]^(a[(i+1)%MS]|(~a[(i+2)%MS]));
+        a[i] = ROR2(a2[(7*i)%MS], i*(i+1)/2);
         a2[i] = a[i]^a[(i+1)%MS]^a[(i+4)%MS];
-   
-    a2[0] ^= 1;
-   
-    //for(unsigned int i=0; i<MS; i++) 
-    //    a[i] = a2[i];
+        a2[0] ^= 1;
   }
   if(i==0){
       b2[index2(0,j)] = b[index2(BL-1,j)];
-    //for(unsigned int j=0; j<BW; j++)
-        a2[j+13] ^= b2[index2(0,j)];//q[j];
+        a2[j+13] ^= b2[index2(0,j)];
   }
 }
 
@@ -270,71 +223,6 @@ __device__ void outLoop(uint32_t* out, char* output, uint32_t* i)
             for(unsigned int w=0; w<sizeof(uint32_t); w++)
                 output[(*i)*sizeof(uint32_t)*2+q*sizeof(uint32_t)+w] = (char)((out[q] >> (8*w)) & 0xFF);
     (*i)++;
-}
-
-#if 0
-__device__ void RF_L1(uint32_t *q, uint32_t *b){
-    int j =  threadIdx.x;
-    for(unsigned int j=0; j<BW; j++)
-        q[j] = b[index2(BL-1,j)];
-}
-#endif
-#if 1
-__device__ void RF_L1(uint32_t *d_q, uint32_t *d_b){
-    int j =  threadIdx.x + blockIdx.x * blockDim.x;
-    while(j<BW){
-        d_q[j] = d_b[index2(BL-1,j)];
-        j+= blockDim.x *gridDim.x;}
-}
-#endif
-__device__ void RF_L2(uint32_t *d_b){
-    for(unsigned int i=BL-1; i>0; i--)
-        for(unsigned int j=0; j<BW; j++)
-            d_b[index2(i,j)] = d_b[index2(i-1,j)];
-}
-__device__ void RF_L3(uint32_t *d_q,uint32_t *d_b){
-    int j =  threadIdx.x + blockIdx.x * blockDim.x;
-    while(j<BW){
-        d_b[index2(0,j)] = d_q[j];
-        j+= blockDim.x *gridDim.x;}
-}
-__device__ void RF_L4(uint32_t *d_a,uint32_t *d_b){
-    int i =  threadIdx.x + blockIdx.x * blockDim.x;
-    while(i<12){
-        d_b[index2(i+1,i%BW)] ^= d_a[i+1];
-        i+= blockDim.x *gridDim.x;}
-}
-__device__ void RF_L5(uint32_t *d_A,uint32_t *d_a){
-    int i =  threadIdx.x + blockIdx.x * blockDim.x;
-    while(i<MS){
-        d_A[i] = d_a[i]^(d_a[(i+1)%MS]|(~d_a[(i+2)%MS]));
-        i+= blockDim.x *gridDim.x;}
-}
-__device__ void RF_L6(uint32_t *d_A,uint32_t *d_a){
-    int i =  threadIdx.x + blockIdx.x * blockDim.x;
-    while(i<MS){
-        d_a[i] = ROR2(d_A[(7*i)%MS], i*(i+1)/2);
-        i+= blockDim.x *gridDim.x;}
-}
-__device__ void RF_L7(uint32_t *d_A,uint32_t *d_a){
-    int i =  threadIdx.x + blockIdx.x * blockDim.x;
-    while(i<MS){
-        d_A[i] = d_a[i]^d_a[(i+1)%MS]^d_a[(i+4)%MS];
-        i+= blockDim.x *gridDim.x;}
-    d_A[0] ^= 1;
-}
-
-__device__ void RF_L8(uint32_t *d_A,uint32_t *d_a){
-    int i =  threadIdx.x + blockIdx.x * blockDim.x;
-    while(i<MS){
-        d_a[i] = d_A[i];
-        i+= blockDim.x *gridDim.x;}
-}
-__device__ void RF_L9(uint32_t *d_q,uint32_t *d_a){
-    int j =  threadIdx.x + blockIdx.x * blockDim.x;
-    while(j<BW){
-        d_a[j+13] ^= d_q[j];
-        j+= blockDim.x *gridDim.x;}
 }
 
 
